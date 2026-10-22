@@ -28,7 +28,7 @@ Registry& GetRegistry()
 } // namespace
 } // namespace StringIdDebug_Private
 
-void StringIdDebug::Register(StringId id, std::string_view name)
+void StringIdDebug::Register(StringId id, std::string_view name) noexcept
 {
 	auto&                  registry = StringIdDebug_Private::GetRegistry();
 	const std::scoped_lock lock(registry.mutex);
@@ -42,7 +42,7 @@ void StringIdDebug::Register(StringId id, std::string_view name)
 	}
 }
 
-std::string_view StringIdDebug::Lookup(StringId id)
+std::string_view StringIdDebug::Lookup(StringId id) noexcept
 {
 	auto&                  registry = StringIdDebug_Private::GetRegistry();
 	const std::scoped_lock lock(registry.mutex);
@@ -53,11 +53,11 @@ std::string_view StringIdDebug::Lookup(StringId id)
 
 #else
 
-void StringIdDebug::Register(StringId, std::string_view)
+void StringIdDebug::Register(StringId, std::string_view) noexcept
 {
 }
 
-std::string_view StringIdDebug::Lookup(StringId)
+std::string_view StringIdDebug::Lookup(StringId) noexcept
 {
 	return "<unknown>";
 }

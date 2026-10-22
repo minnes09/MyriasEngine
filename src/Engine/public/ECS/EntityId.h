@@ -38,7 +38,7 @@ public:
 	}
 	[[nodiscard]] constexpr WorldId      GetWorldId() const noexcept { return static_cast<WorldId>(value >> kWorldShift); }
 	[[nodiscard]] constexpr std::uint8_t Flags() const noexcept { return static_cast<std::uint8_t>(value >> kFlagsShift); }
-	[[nodiscard]] constexpr bool         IsNull() const noexcept { return value == 0; }
+	[[nodiscard]] constexpr bool         IsNull() const noexcept { return (value & kIdentityMask) == 0; }
 
 	friend constexpr bool operator==(EntityId lhs, EntityId rhs) noexcept
 	{

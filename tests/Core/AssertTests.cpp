@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-// The suite builds in Debug, so assertions are enabled here. AssertDisabledTests.cpp covers the
+// These tests need assertions enabled (Debug; skipped otherwise). AssertDisabledTests.cpp covers the
 // disabled behaviour.
 
 TEST(Assert, PassingAssertionDoesNothing)
@@ -13,6 +13,8 @@ TEST(Assert, PassingAssertionDoesNothing)
 
 TEST(Assert, ExpressionIsEvaluatedExactlyOnce)
 {
+	if constexpr (!MYRIAS_ASSERTS_ENABLED)
+		GTEST_SKIP() << "disabled asserts do not evaluate: covered by AssertDisabled.ExpressionIsNotEvaluated";
 	int evaluations = 0;
 	MYRIAS_ASSERT(++evaluations == 1, "evaluated once");
 	EXPECT_EQ(evaluations, 1);

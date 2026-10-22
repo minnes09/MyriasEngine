@@ -6,6 +6,7 @@
 // operator new/delete replacement linked into the test executable (AllocationCounter.cpp).
 //
 // Keep assertions OUTSIDE the scope: a failing EXPECT allocates.
+// Scopes cannot be nested (they share one per-thread counter): a nested one aborts.
 class AllocationScope
 {
 public:

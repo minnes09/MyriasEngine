@@ -16,8 +16,8 @@ class StringId;
 namespace StringIdDebug
 {
 // Asserts if the id is already registered with a different name (hash collision).
-void Register(StringId id, std::string_view name);
-[[nodiscard]] std::string_view Lookup(StringId id);
+void Register(StringId id, std::string_view name) noexcept;
+[[nodiscard]] std::string_view Lookup(StringId id) noexcept;
 } // namespace StringIdDebug
 
 namespace StringId_Private
@@ -47,7 +47,7 @@ class StringId
 public:
 	constexpr StringId() noexcept = default;
 
-	constexpr explicit StringId(std::string_view name)
+	constexpr explicit StringId(std::string_view name) noexcept // Debug: registers the name (may allocate)
 	    : value(StringId_Private::Fnv1a64(name))
 	{
 		MYRIAS_ASSERT(value != 0, "StringId: name hashes to the reserved null value");

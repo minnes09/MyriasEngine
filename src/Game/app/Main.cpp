@@ -2,6 +2,7 @@
 
 #include "App/Myrias.h"
 
+#include "Core/Fatal.h"
 #include "ECS/Components/Renderable.h"
 #include "ECS/Components/Transform.h"
 #include "ECS/Components/Velocity.h"
@@ -89,6 +90,7 @@ void CreateScene(EntityManager& entities)
 
 int main()
 {
+	InstallFatalHandlers();
 	Myrias engine({ .width = kWindowWidth, .height = kWindowHeight, .title = "Myrias Game" });
 
 	CreateScene(EntityManager::Get());

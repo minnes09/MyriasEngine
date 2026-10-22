@@ -1,5 +1,6 @@
 #include "Support/AllocationCounter.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <new>
 
@@ -57,6 +58,13 @@ void* AllocateAlignedOrThrow(std::size_t size, std::align_val_t alignment)
 
 AllocationScope::AllocationScope() noexcept
 {
+	// Always checked, also in Release: a nested scope would reset the outer count and, on exit,
+	// stop counting for the rest of the outer scope.
+	if (AllocationCounter_Private::bCounting)
+	{
+		std::fputs("AllocationScope: scopes cannot be nested\n", stderr);
+		std::abort();
+	}
 	AllocationCounter_Private::allocationCount = 0;
 	AllocationCounter_Private::bCounting       = true;
 }

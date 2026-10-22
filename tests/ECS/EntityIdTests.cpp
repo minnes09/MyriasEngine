@@ -53,6 +53,20 @@ TEST(EntityId, FlagsAreIgnoredByEqualityAndHash)
 	EXPECT_EQ(std::hash<EntityId>{}(plain), std::hash<EntityId>{}(tagged));
 }
 
+TEST(EntityId, FlagsOnlyIdIsNullAndEqualsDefault)
+{
+	// Create rejects generation 0 and world 0 when asserts are on, so the id is only buildable without them.
+	if constexpr (MYRIAS_ASSERTS_ENABLED)
+		GTEST_SKIP() << "an id with only flags cannot be built while asserts are enabled";
+	else
+	{
+		const EntityId flagsOnly = EntityId::Create(0, 0, 0, 0x80);
+		EXPECT_EQ(flagsOnly.Flags(), 0x80);
+		EXPECT_TRUE(flagsOnly.IsNull());
+		EXPECT_EQ(flagsOnly, EntityId{});
+	}
+}
+
 TEST(EntityIdDeathTest, ZeroGenerationAsserts)
 {
 	EXPECT_DEBUG_DEATH(static_cast<void>(EntityId::Create(1, 0, 1)), "generation 0 is reserved");

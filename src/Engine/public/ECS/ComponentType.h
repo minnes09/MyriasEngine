@@ -2,6 +2,8 @@
 
 #include "Core/Assert.h"
 #include "Core/StringId.h"
+#include "ECS/Chunk.h"
+#include "ECS/EntityId.h"
 
 #include <bitset>
 #include <cstddef>
@@ -28,9 +30,11 @@ template <typename T>
 inline constexpr bool IsColdComponent = false;
 
 // Hot components are plain data: trivially copyable, moved with memcpy between chunks.
+// Cold components: default/copy constructors must not throw (except out of memory, which terminates), see ADR-0005.
 template <typename T>
 concept IsComponent = std::is_object_v<T> && !std::is_const_v<T> && !std::is_volatile_v<T>
                    && std::is_nothrow_move_constructible_v<T> && std::is_nothrow_destructible_v<T>
+                   && std::is_default_constructible_v<T>
                    && (std::is_trivially_copyable_v<T> || IsColdComponent<T>);
 
 // Type-erased description of a component type, used by archetype columns on structural paths
@@ -44,10 +48,10 @@ struct ComponentMeta
 	bool          bTriviallyCopyable = true;
 	bool          bTag               = false; // empty type: part of the signature, no column
 
-	void (*defaultConstruct)(void* destination, std::size_t count)                  = nullptr;
-	void (*moveConstruct)(void* destination, void* source, std::size_t count)       = nullptr;
-	void (*copyConstruct)(void* destination, const void* source, std::size_t count) = nullptr;
-	void (*destroy)(void* destination, std::size_t count)                           = nullptr;
+	void (*defaultConstruct)(void* destination, std::size_t count) noexcept                  = nullptr;
+	void (*moveConstruct)(void* destination, void* source, std::size_t count) noexcept       = nullptr;
+	void (*copyConstruct)(void* destination, const void* source, std::size_t count) noexcept = nullptr;
+	void (*destroy)(void* destination, std::size_t count) noexcept                           = nullptr;
 };
 
 // Process-wide, append-only table of component types. Entries are written once at registration
@@ -55,8 +59,8 @@ struct ComponentMeta
 class ComponentTypeRegistry
 {
 public:
-	// Thread-safe. Asserts when kMaxComponentTypes is exceeded.
-	[[nodiscard]] static ComponentId          Register(const ComponentMeta& meta);
+	// Thread-safe. Aborts (also in Release) when kMaxComponentTypes is exceeded.
+	[[nodiscard]] static ComponentId          Register(const ComponentMeta& meta) noexcept;
 	[[nodiscard]] static const ComponentMeta& Get(ComponentId id) noexcept;
 	// Number of ids handed out so far.
 	[[nodiscard]] static std::size_t          Count() noexcept;
@@ -93,7 +97,7 @@ template <typename T>
 }
 
 template <typename T>
-void DefaultConstruct(void* destination, std::size_t count)
+void DefaultConstruct(void* destination, std::size_t count) noexcept
 {
 	T* typed = static_cast<T*>(destination);
 	for (std::size_t i = 0; i < count; ++i)
@@ -101,7 +105,7 @@ void DefaultConstruct(void* destination, std::size_t count)
 }
 
 template <typename T>
-void MoveConstruct(void* destination, void* source, std::size_t count)
+void MoveConstruct(void* destination, void* source, std::size_t count) noexcept
 {
 	T* to   = static_cast<T*>(destination);
 	T* from = static_cast<T*>(source);
@@ -110,7 +114,7 @@ void MoveConstruct(void* destination, void* source, std::size_t count)
 }
 
 template <typename T>
-void CopyConstruct(void* destination, const void* source, std::size_t count)
+void CopyConstruct(void* destination, const void* source, std::size_t count) noexcept
 {
 	T*       to   = static_cast<T*>(destination);
 	const T* from = static_cast<const T*>(source);
@@ -119,13 +123,13 @@ void CopyConstruct(void* destination, const void* source, std::size_t count)
 }
 
 template <typename T>
-void Destroy(void* destination, std::size_t count)
+void Destroy(void* destination, std::size_t count) noexcept
 {
 	std::destroy_n(static_cast<T*>(destination), count);
 }
 
 template <typename T>
-[[nodiscard]] ComponentMeta MakeMeta()
+[[nodiscard]] ComponentMeta MakeMeta() noexcept
 {
 	ComponentMeta meta;
 	meta.size               = static_cast<std::uint32_t>(sizeof(T));
@@ -160,6 +164,10 @@ template <typename T>
 {
 	using Type = std::remove_cv_t<T>;
 	static_assert(IsComponent<Type>, "not a component: must be trivially copyable, or opt in with IsColdComponent");
+	static_assert(alignof(Type) <= kChunkAlignment, "component alignment above kChunkAlignment");
+	// A one-row chunk: the first column starts at kFirstColumnOffset (see Archetype::ComputeLayout).
+	static_assert(kFirstColumnOffset + sizeof(Type) <= kChunkSize,
+	              "component too big: a row must fit in a chunk");
 	return ComponentType_Private::RegisteredId<Type>();
 }
 

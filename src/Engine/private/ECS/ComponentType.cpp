@@ -1,36 +1,46 @@
 #include "ECS/ComponentType.h"
 
+#include "Core/Fatal.h"
+
 #include <array>
 #include <atomic>
+#include <mutex>
 
 namespace ComponentType_Private
 {
 namespace
 {
 // Constant-initialised: safe to use from static initialisers of other translation units.
-std::array<ComponentMeta, kMaxComponentTypes> metas{};
-std::atomic<std::uint32_t>                    registeredCount{ 0 };
+// Same scheme as StringIdDebug and WorldIdAllocator: mutex on the rare write, lock-free reads.
+constinit std::array<ComponentMeta, kMaxComponentTypes> metas{};
+constinit std::atomic<std::uint32_t>                    count{ 0 }; // entries [0, count) are written and immutable
+constinit std::mutex                                    registerMutex;
 } // namespace
 } // namespace ComponentType_Private
 
-ComponentId ComponentTypeRegistry::Register(const ComponentMeta& meta)
+ComponentId ComponentTypeRegistry::Register(const ComponentMeta& meta) noexcept
 {
-	const std::uint32_t index = ComponentType_Private::registeredCount.fetch_add(1, std::memory_order_relaxed);
-	MYRIAS_ASSERT(index < kMaxComponentTypes, "too many component types: raise kMaxComponentTypes");
-	// Published to readers by the thread-safe static initialisation in GetComponentId<T>(): whoever
-	// obtains the id also sees the entry.
+	const std::scoped_lock lock(ComponentType_Private::registerMutex);
+
+	const std::uint32_t index = ComponentType_Private::count.load(std::memory_order_relaxed);
+	if (index >= kMaxComponentTypes) // always checked: writing past the table would corrupt memory
+	{
+		FatalError("ComponentTypeRegistry: too many component types: raise kMaxComponentTypes");
+	}
+
 	ComponentType_Private::metas[index] = meta;
+	// Release: readers that acquire the new count see the entry.
+	ComponentType_Private::count.store(index + 1, std::memory_order_release);
 	return static_cast<ComponentId>(index);
 }
 
 const ComponentMeta& ComponentTypeRegistry::Get(ComponentId id) noexcept
 {
-	MYRIAS_ASSERT(id < ComponentType_Private::registeredCount.load(std::memory_order_relaxed),
-	              "unknown ComponentId");
+	MYRIAS_ASSERT(id < ComponentType_Private::count.load(std::memory_order_acquire), "unknown ComponentId");
 	return ComponentType_Private::metas[id];
 }
 
 std::size_t ComponentTypeRegistry::Count() noexcept
 {
-	return ComponentType_Private::registeredCount.load(std::memory_order_relaxed);
+	return ComponentType_Private::count.load(std::memory_order_acquire);
 }

@@ -1,7 +1,8 @@
 #pragma once
 
-#include "ECS/Chunk.h"
-#include "ECS/ComponentType.h"
+#include "ECS/ArchetypeRow.h"
+#include "ECS/ComponentId.h"
+#include "ECS/ComponentMeta.h"
 #include "ECS/EntityId.h"
 
 #include <cstddef>
@@ -9,8 +10,13 @@
 #include <span>
 #include <vector>
 
+struct Chunk;
+
+namespace ECS_Private
+{
 class Archetype;
 class ChunkAllocator;
+
 
 // One per non-tag component: where its column starts inside every chunk of the archetype.
 struct ArchetypeColumn
@@ -25,15 +31,6 @@ struct ChunkHeader
 {
 	Chunk*        chunk = nullptr;
 	std::uint16_t count = 0;
-};
-
-// Where an entity's components live inside an archetype.
-struct ArchetypeRow
-{
-	std::uint32_t chunkIndex = 0;
-	std::uint16_t row        = 0;
-
-	friend constexpr bool operator==(ArchetypeRow, ArchetypeRow) noexcept = default;
 };
 
 // Cached edge of the archetype graph: the archetype reached by adding/removing one component.
@@ -115,7 +112,7 @@ private:
 	[[nodiscard]] std::byte* ComponentBytes(ArchetypeRow row, int columnIndex) noexcept;
 	[[nodiscard]] bool       IsValid(ArchetypeRow row) const noexcept;
 
-	ChunkAllocator&              allocator;
+	ChunkAllocator& allocator;
 	ComponentMask                mask;
 	std::vector<ComponentId>     signature;
 	std::vector<ArchetypeColumn> columns;
@@ -125,3 +122,4 @@ private:
 	std::uint16_t                chunkCapacity = 0;
 	std::size_t                  entityCount   = 0;
 };
+} // namespace ECS_Private

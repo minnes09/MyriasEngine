@@ -5,7 +5,9 @@ file(GLOB_RECURSE MYRIAS_HEADERS CONFIGURE_DEPENDS
 
 add_library(Myrias STATIC ${MYRIAS_SOURCES} ${MYRIAS_HEADERS})
 
-target_include_directories(Myrias PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/public")
+target_include_directories(Myrias
+    PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/public"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/private")
 
 # Public headers expose sf:: types, so SFML is part of the interface.
 target_link_libraries(Myrias

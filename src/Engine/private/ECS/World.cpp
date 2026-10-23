@@ -1,22 +1,26 @@
 #include "ECS/World.h"
 
 #include "Core/Fatal.h"
-#include "WorldIdAllocator.h"
+#include "ECS/Archetype.h"
+#include "ECS/ArchetypeGraph.h"
+#include "ECS/WorldIdAllocator.h"
 
-#include <algorithm>
-#include <iterator>
+#include <cstdint>
+#include <memory>
+
+
+using namespace ECS_Private;
 
 World::World() noexcept
     : worldId(WorldIdAllocator::Acquire())
     , entityIndex(worldId)
+    , archetypeGraph(chunkAllocator)
 {
-	emptyArchetype = &FindOrCreateArchetype({});
+	SyncQueryRegistry();
 }
 
 World::~World() noexcept
 {
-	archetypesByMask.clear();
-	archetypes.clear(); // destroys components and returns chunks while the allocator is alive
 	WorldIdAllocator::Release(worldId);
 }
 
@@ -24,8 +28,8 @@ EntityId World::CreateEntity() noexcept
 {
 	AssertNotIterating();
 	const EntityId     entity = entityIndex.Create();
-	const ArchetypeRow row    = emptyArchetype->AddRow(entity);
-	entityIndex.Get(entity)   = { .archetype = emptyArchetype, .row = row };
+	const ArchetypeRow row    = archetypeGraph.Empty().AddRow(entity);
+	entityIndex.Get(entity)   = { .archetype = &archetypeGraph.Empty(), .row = row };
 	return entity;
 }
 
@@ -68,7 +72,7 @@ void World::Reserve(std::size_t entityCount) noexcept
 void World::Clear() noexcept
 {
 	AssertNotIterating();
-	for (const std::unique_ptr<Archetype>& archetype : archetypes)
+	for (const std::unique_ptr<Archetype>& archetype : archetypeGraph.Archetypes())
 	{
 		while (archetype->EntityCount() > 0)
 		{
@@ -81,38 +85,9 @@ void World::Clear() noexcept
 
 void World::Trim() noexcept
 {
-	for (const std::unique_ptr<Archetype>& archetype : archetypes)
+	for (const std::unique_ptr<Archetype>& archetype : archetypeGraph.Archetypes())
 		archetype->ReleaseSpareChunk();
 	chunkAllocator.Trim();
-}
-
-QueryCache& World::PublishQueryCache(QueryId id, QueryCache&& prototype) const noexcept
-{
-	const std::scoped_lock lock(queryMutex);
-	if (QueryCache* existing = queryLookup[id].load(std::memory_order_relaxed))
-		return *existing; // another thread was faster
-
-	QueryCacheUnique cache = std::make_unique<QueryCache>(std::move(prototype));
-	for (const std::unique_ptr<Archetype>& archetype : archetypes)
-		if (Matches(*cache, *archetype))
-			AddArchetypeToCache(*cache, *archetype);
-	QueryCache* const raw = cache.get();
-	ownedQueryCaches.push_back(std::move(cache));
-	queryLookup[id].store(raw, std::memory_order_release);
-	return *raw;
-}
-
-bool World::Matches(const QueryCache& cache, const Archetype& archetype) noexcept
-{
-	const ComponentMask& mask = archetype.Mask();
-	return (mask & cache.required) == cache.required && !(mask & cache.excluded).any();
-}
-
-void World::AddArchetypeToCache(QueryCache& cache, Archetype& archetype) noexcept
-{
-	cache.archetypes.push_back(&archetype);
-	for (const ComponentId component : cache.passed)
-		cache.columns.push_back(archetype.ColumnIndex(component));
 }
 
 void World::CheckWorld(EntityId entity) const noexcept
@@ -137,7 +112,8 @@ World::AddedComponent World::AddComponent(EntityId entity, ComponentId component
 		return { .storage = column >= 0 ? record.archetype->ComponentData(record.row, column) : nullptr, .bExisting = true };
 	}
 
-	Archetype& target = AddTarget(*record.archetype, component);
+	Archetype& target = archetypeGraph.AddTarget(*record.archetype, component);
+	SyncQueryRegistry();
 	const int  column = target.ColumnIndex(component);
 	if (column < 0) // tag: nothing to construct
 	{
@@ -155,7 +131,9 @@ void World::RemoveComponent(EntityId entity, ComponentId component) noexcept
 	EntityRecord* record = entityIndex.Find(entity);
 	if (!record || !record->archetype->Mask().test(component))
 		return;
-	MoveEntity(*record, RemoveTarget(*record->archetype, component), nullptr);
+	Archetype& target = archetypeGraph.RemoveTarget(*record->archetype, component);
+	SyncQueryRegistry();
+	MoveEntity(*record, target, nullptr);
 }
 
 bool World::HasComponent(EntityId entity, ComponentId component) const noexcept
@@ -178,7 +156,7 @@ void* World::FindComponent(EntityId entity, ComponentId component) const noexcep
 void World::DestroyAllWithComponent(ComponentId component) noexcept
 {
 	AssertNotIterating();
-	for (const std::unique_ptr<Archetype>& archetype : archetypes)
+	for (const std::unique_ptr<Archetype>& archetype : archetypeGraph.Archetypes())
 	{
 		if (!archetype->Mask().test(component))
 			continue;
@@ -197,53 +175,4 @@ void World::MoveEntity(EntityRecord& record, Archetype& target, const ComponentI
 	if (!move.movedEntity.IsNull())
 		entityIndex.Get(move.movedEntity).row = record.row; // it took the vacated row
 	record = { .archetype = &target, .row = move.destination };
-}
-
-Archetype& World::AddTarget(Archetype& from, ComponentId component) noexcept
-{
-	if (const ArchetypeTransition* transition = from.FindTransition(component); transition && transition->onAdd)
-		return *transition->onAdd;
-
-	std::vector<ComponentId> signature(from.Signature().begin(), from.Signature().end());
-	signature.insert(std::ranges::upper_bound(signature, component), component);
-	Archetype& target = FindOrCreateArchetype(signature);
-
-	from.GetOrAddTransition(component).onAdd      = &target;
-	target.GetOrAddTransition(component).onRemove = &from;
-	return target;
-}
-
-Archetype& World::RemoveTarget(Archetype& from, ComponentId component) noexcept
-{
-	if (const ArchetypeTransition* transition = from.FindTransition(component); transition && transition->onRemove)
-		return *transition->onRemove;
-
-	std::vector<ComponentId> signature;
-	std::ranges::copy_if(from.Signature(), std::back_inserter(signature), [&](ComponentId id) { return id != component; });
-	Archetype& target = FindOrCreateArchetype(signature);
-
-	from.GetOrAddTransition(component).onRemove = &target;
-	target.GetOrAddTransition(component).onAdd  = &from;
-	return target;
-}
-
-Archetype& World::FindOrCreateArchetype(std::span<const ComponentId> signature) noexcept
-{
-	ComponentMask mask;
-	for (const ComponentId component : signature)
-		mask.set(component);
-
-	if (const auto it = archetypesByMask.find(mask); it != archetypesByMask.end())
-		return *it->second;
-
-	// Not under queryMutex: structural changes are exclusive (nothing, not even a const query, runs
-	// concurrently with them), so no reader can be looking at the caches or the lookup table.
-	std::unique_ptr<Archetype> owned     = std::make_unique<Archetype>(signature, chunkAllocator);
-	Archetype&                 archetype = *owned;
-	archetypes.push_back(std::move(owned));
-	archetypesByMask.emplace(mask, &archetype);
-	for (const QueryCacheUnique& cache : ownedQueryCaches)
-		if (Matches(*cache, archetype))
-			AddArchetypeToCache(*cache, archetype); // eager: queries never scan on read
-	return archetype;
 }

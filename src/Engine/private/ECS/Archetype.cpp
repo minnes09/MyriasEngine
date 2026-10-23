@@ -1,8 +1,11 @@
 #include "ECS/Archetype.h"
 
+#include "Core/Alignment.h"
 #include "Core/Assert.h"
 #include "Core/Fatal.h"
+#include "ECS/Chunk.h"
 #include "ECS/ChunkAllocator.h"
+#include "ECS/ComponentType.h"
 
 #include <algorithm>
 #include <cstring>
@@ -35,6 +38,8 @@ void Destroy(const ComponentMeta& meta, std::byte* component) noexcept
 } // namespace
 } // namespace Archetype_Private
 
+namespace ECS_Private
+{
 Archetype::Archetype(std::span<const ComponentId> sortedSignature, ChunkAllocator& chunkAllocator) noexcept
     : allocator(chunkAllocator)
     , signature(sortedSignature.begin(), sortedSignature.end())
@@ -299,3 +304,4 @@ bool Archetype::IsValid(ArchetypeRow row) const noexcept
 {
 	return row.chunkIndex < chunks.size() && row.row < chunks[row.chunkIndex].count;
 }
+} // namespace ECS_Private

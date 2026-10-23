@@ -1,6 +1,9 @@
 #include "ECS/Archetype.h"
 
+#include "ECS/Chunk.h"
 #include "ECS/ChunkAllocator.h"
+#include "ECS/ComponentConcepts.h"
+#include "ECS/ComponentType.h"
 #include "Support/AllocationCounter.h"
 
 #include <gtest/gtest.h>
@@ -10,6 +13,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+using namespace ECS_Private;
 
 namespace
 {

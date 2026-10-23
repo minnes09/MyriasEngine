@@ -2,22 +2,26 @@
 
 #include "Core/Assert.h"
 #include "ECS/Archetype.h"
+#include "ECS/ArchetypeGraph.h"
 #include "ECS/ChunkAllocator.h"
+#include "ECS/ComponentConcepts.h"
+#include "ECS/ComponentId.h"
 #include "ECS/ComponentType.h"
 #include "ECS/EntityId.h"
 #include "ECS/EntityIndex.h"
 #include "ECS/Query.h"
+#include "ECS/QueryCache.h"
+#include "ECS/QueryId.h"
+#include "ECS/QueryRegistry.h"
+#include "ECS/QueryTerms.h"
+#include "ECS/WorldId.h"
 
-#include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <mutex>
-#include <span>
 #include <type_traits>
-#include <unordered_map>
 #include <utility>
-#include <vector>
 
 namespace World_Private
 {
@@ -96,7 +100,7 @@ public:
 	// Returns unused memory: spare chunks and fully free chunk blocks.
 	void Trim() noexcept;
 
-	[[nodiscard]] std::size_t ArchetypeCount() const noexcept { return archetypes.size(); }
+	[[nodiscard]] std::size_t ArchetypeCount() const noexcept { return archetypeGraph.Count(); }
 
 	// Creates the cache of a query type ahead of time, so the first Query() in a frame does not
 	// take the slow path (lock + allocation).
@@ -119,9 +123,7 @@ public:
 	template <typename... Terms>
 	[[nodiscard]] ::Query<Terms...> Query() const noexcept
 	{
-		static_assert(((!Query_Private::TermTraits<Terms>::bPassed
-		                || std::is_const_v<typename Query_Private::TermTraits<Terms>::Column>) && ...),
-		              "Query on a const World: passed terms must be const T or Optional<const T>");
+		static_assert(IsReadOnlyQuery<Terms...>, "Query on a const World: passed terms must be const T or Optional<const T>");
 		return MakeQuery<Terms...>();
 	}
 
@@ -133,38 +135,14 @@ private:
 		MYRIAS_ASSERT(activeIterations.load(std::memory_order_relaxed) == 0,
 		              "World: structural change while iterating a query");
 	}
-	// Slow path of MakeQuery: publishes the cache (filled with the existing archetypes) unless
-	// another thread did it first.
-	[[nodiscard]] QueryCache& PublishQueryCache(QueryId id, QueryCache&& prototype) const noexcept;
-	[[nodiscard]] static bool Matches(const QueryCache& cache, const Archetype& archetype) noexcept;
-	// Appends the archetype and its column indices (may allocate): structural path or cache creation only.
-	static void               AddArchetypeToCache(QueryCache& cache, Archetype& archetype) noexcept;
-
 	template <typename... Terms>
 	[[nodiscard]] ::Query<Terms...> MakeQuery() const noexcept
 	{
-		const QueryId id    = GetQueryId<Terms...>();
-		QueryCache*   cache = queryLookup[id].load(std::memory_order_acquire);
+		const QueryId            id    = GetQueryId<Terms...>();
+		ECS_Private::QueryCache* cache = queryRegistry.Find(id);
 		if (!cache)
-		{
-			QueryCache prototype;
-			(AddTermToCache<Terms>(prototype), ...);
-			cache = &PublishQueryCache(id, std::move(prototype));
-		}
+			cache = &queryRegistry.Publish<Terms...>(id, archetypeGraph.Archetypes());
 		return ::Query<Terms...>(*cache, activeIterations);
-	}
-
-	template <typename Term>
-	static void AddTermToCache(QueryCache& cache) noexcept
-	{
-		using Traits                = Query_Private::TermTraits<Term>;
-		const ComponentId component = GetComponentId<typename Traits::Component>();
-		if constexpr (Traits::bRequired)
-			cache.required.set(component);
-		if constexpr (Traits::bExcluded)
-			cache.excluded.set(component);
-		if constexpr (Traits::bPassed)
-			cache.passed.push_back(component);
 	}
 
 	// bExisting: the component was already there (storage holds a live value). Otherwise storage is
@@ -179,29 +157,24 @@ private:
 	[[nodiscard]] bool     HasComponent(EntityId entity, ComponentId component) const noexcept;
 	[[nodiscard]] void*    FindComponent(EntityId entity, ComponentId component) const noexcept;
 	void                   DestroyAllWithComponent(ComponentId component) noexcept;
-	void                   MoveEntity(EntityRecord& record, Archetype& target, const ComponentId* uninitialised) noexcept;
-	[[nodiscard]] Archetype& AddTarget(Archetype& from, ComponentId component) noexcept;
-	[[nodiscard]] Archetype& RemoveTarget(Archetype& from, ComponentId component) noexcept;
-	[[nodiscard]] Archetype& FindOrCreateArchetype(std::span<const ComponentId> signature) noexcept;
+	void                   MoveEntity(ECS_Private::EntityRecord& record, ECS_Private::Archetype& target, const ComponentId* uninitialised) noexcept;
+	// Tells the query registry about the archetypes the graph created (call after AddTarget/RemoveTarget).
+	void SyncQueryRegistry() noexcept
+	{
+		if (queryRegistry.HasUnseenArchetypes(archetypeGraph.Archetypes()))
+			queryRegistry.OnArchetypesCreated(archetypeGraph.Archetypes());
+	}
 
 	// Declaration order is destruction order in reverse: archetypes return their chunks to the
-	// allocator before it goes away.
-	WorldId                                       worldId;
-	ChunkAllocator                                chunkAllocator;
-	EntityIndex                                   entityIndex;
-	std::vector<std::unique_ptr<Archetype>>       archetypes;
-	std::unordered_map<ComponentMask, Archetype*> archetypesByMask; // structural lookups only
-	Archetype*                                    emptyArchetype = nullptr;
-
-	// Query caches. queryLookup[QueryId] is the lock-free fast path (null until the cache exists);
-	// ownedQueryCaches owns them (stable addresses, freed with the World) and is the list the
-	// World updates when it creates an archetype. queryMutex guards the creation of caches.
-	// Mutable: a const World can be queried.
-	mutable std::array<std::atomic<QueryCache*>, kMaxQueryTypes> queryLookup{};
-	mutable std::vector<QueryCacheUnique>                        ownedQueryCaches;
-	mutable std::mutex                                           queryMutex;
+	// allocator before it goes away. The registry is a plain member: its own state is mutable where
+	// a const World must be queryable (see QueryRegistry).
+	WorldId                          worldId;
+	ECS_Private::ChunkAllocator      chunkAllocator;
+	ECS_Private::EntityIndex         entityIndex;
+	ECS_Private::ArchetypeGraph      archetypeGraph;
+	ECS_Private::QueryRegistry       queryRegistry;
 	// Running ForEach/ForEachChunk, used only by the Debug guard. Always declared (the layout does
-	// not depend on MYRIAS_ASSERTS_ENABLED); untouched in Release.
+	// not depend on MYRIAS_ASSERTS_ENABLED); untouched in Release. Mutable: passed to queries of a const World.
 	mutable std::atomic<std::uint32_t> activeIterations{ 0 };
 };
 

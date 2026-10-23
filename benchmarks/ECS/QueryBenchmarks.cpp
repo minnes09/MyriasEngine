@@ -1,5 +1,8 @@
 // Query iteration costs (ADR-0004 step 10). Run in Release only, on request or for critical changes.
 
+#include "ECS/ChunkView.h"
+#include "ECS/Query.h"
+#include "ECS/QueryTerms.h"
 #include "ECS/World.h"
 
 #include <benchmark/benchmark.h>

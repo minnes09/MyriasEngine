@@ -1,4 +1,4 @@
-#include "ECS/Query.h"
+#include "ECS/QueryId.h"
 
 #include "Core/Fatal.h"
 

@@ -1,13 +1,11 @@
 #pragma once
 
 #include "Core/Assert.h"
+#include "ECS/WorldId.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-
-// Identifies a World: 1..255, 0 = no world.
-using WorldId = std::uint8_t;
 
 // Identifies an entity inside a World. 64 bits:
 //   bits  0-31  index       (slot in the World's entity index)

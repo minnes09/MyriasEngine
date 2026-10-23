@@ -2,10 +2,13 @@
 
 #include "Core/Assert.h"
 #include "Core/Fatal.h"
+#include "ECS/Archetype.h"
 
 #include <limits>
 #include <utility>
 
+namespace ECS_Private
+{
 EntityIndex::EntityIndex(WorldId world) noexcept
     : world(world)
 {
@@ -128,3 +131,4 @@ EntityIndex::Slot& EntityIndex::SlotFor(std::uint32_t index) noexcept
 		pages[page] = std::make_unique<Page>();
 	return (*pages[page])[index % kPageSize];
 }
+} // namespace ECS_Private

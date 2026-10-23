@@ -1,3 +1,6 @@
+#include "ECS/ChunkView.h"
+#include "ECS/Query.h"
+#include "ECS/QueryTerms.h"
 #include "ECS/World.h"
 
 #include "Support/AllocationCounter.h"
@@ -158,6 +161,25 @@ TEST(Query, ArchetypeCreatedAfterTheFirstCallIsIncluded)
 
 	world.Add(a, Velocity{}); // new archetype {Position, Velocity}
 	Spawn(world, 2.f);
+	count = 0;
+	world.Query<Position>().ForEach([&](Position&) { ++count; });
+	EXPECT_EQ(count, 2);
+}
+
+TEST(Query, ArchetypeCreatedByRemoveAfterTheFirstCallIsIncluded)
+{
+	World          world;
+	const EntityId a = Spawn(world, 1.f);
+	world.Add(a, Velocity{});
+	world.Add(a, Health{});
+
+	int count = 0;
+	world.Query<Position>().ForEach([&](Position&) { ++count; });
+	EXPECT_EQ(count, 1);
+
+	world.Remove<Velocity>(a); // creates {Position, Health} after the cache exists
+	const EntityId b = Spawn(world, 2.f);
+	world.Add(b, Health{});    // reuses it
 	count = 0;
 	world.Query<Position>().ForEach([&](Position&) { ++count; });
 	EXPECT_EQ(count, 2);

@@ -8,6 +8,8 @@
 #include <set>
 #include <vector>
 
+using namespace ECS_Private;
+
 TEST(EntityIndex, CreatedIdsAreDistinctAndCarryTheWorld)
 {
 	EntityIndex index(3);

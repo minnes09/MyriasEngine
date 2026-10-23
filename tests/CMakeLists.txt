@@ -24,7 +24,8 @@ endforeach()
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 add_executable(MyriasTests ${TEST_SOURCES})
-target_include_directories(MyriasTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+# ECS tests also exercise internal types (Chunk, ComponentTypeRegistry), hence the private include path.
+target_include_directories(MyriasTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/src/Engine/private")
 target_link_libraries(MyriasTests PRIVATE Myrias GTest::gtest_main MyriasWarnings)
 
 include(GoogleTest)

@@ -28,4 +28,6 @@ endforeach()
 file(GLOB_RECURSE BENCHMARK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 add_executable(MyriasBenchmarks ${BENCHMARK_SOURCES})
+# ChunkBenchmarks exercises internal types (Chunk), hence the private include path.
+target_include_directories(MyriasBenchmarks PRIVATE "${CMAKE_SOURCE_DIR}/src/Engine/private")
 target_link_libraries(MyriasBenchmarks PRIVATE Myrias benchmark::benchmark_main MyriasWarnings)

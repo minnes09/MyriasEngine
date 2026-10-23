@@ -1,12 +1,18 @@
 #include "ECS/ChunkAllocator.h"
 
 #include "Core/Assert.h"
+#include "ECS/Chunk.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <numeric>
+#include <vector>
 
+namespace ECS_Private
+{
 namespace ChunkAllocator_Private
 {
 namespace
@@ -26,6 +32,7 @@ void SetNext(Chunk* chunk, Chunk* next) noexcept
 } // namespace
 } // namespace ChunkAllocator_Private
 
+ChunkAllocator::ChunkAllocator() noexcept = default;
 ChunkAllocator::~ChunkAllocator() noexcept = default;
 
 Chunk* ChunkAllocator::Allocate() noexcept
@@ -123,3 +130,4 @@ bool ChunkAllocator::Owns(const Chunk* chunk) const noexcept
 	                           [&](const std::unique_ptr<Chunk[]>& block)
 	                           { return notAfter(block.get(), chunk) && before(chunk, block.get() + kChunksPerBlock); });
 }
+} // namespace ECS_Private

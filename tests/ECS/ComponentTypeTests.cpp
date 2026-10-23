@@ -1,4 +1,5 @@
 #include "ECS/ComponentType.h"
+#include "ECS/ComponentTypeRegistry.h"
 
 #include <gtest/gtest.h>
 

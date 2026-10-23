@@ -1,9 +1,12 @@
-#include "ECS/ComponentType.h"
+#include "ECS/ComponentTypeRegistry.h"
 
+#include "Core/Assert.h"
 #include "Core/Fatal.h"
+#include "ECS/ComponentType.h"
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 
 namespace ComponentType_Private
@@ -43,4 +46,14 @@ const ComponentMeta& ComponentTypeRegistry::Get(ComponentId id) noexcept
 std::size_t ComponentTypeRegistry::Count() noexcept
 {
 	return ComponentType_Private::count.load(std::memory_order_acquire);
+}
+
+ComponentId ComponentType_Private::Register(const ComponentMeta& meta) noexcept
+{
+	return ComponentTypeRegistry::Register(meta);
+}
+
+const ComponentMeta& GetComponentMeta(ComponentId id) noexcept
+{
+	return ComponentTypeRegistry::Get(id);
 }

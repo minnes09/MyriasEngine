@@ -1,4 +1,4 @@
-#include "WorldIdAllocator.h"
+#include "ECS/WorldIdAllocator.h"
 
 #include "Core/Assert.h"
 #include "Core/Fatal.h"

@@ -1,3 +1,4 @@
+#include "ECS/Chunk.h"
 #include "ECS/ChunkAllocator.h"
 
 #include "Support/AllocationCounter.h"
@@ -9,6 +10,8 @@
 #include <cstring>
 #include <functional>
 #include <vector>
+
+using namespace ECS_Private;
 
 namespace
 {

@@ -1,11 +1,13 @@
 #pragma once
 
-#include "ECS/Chunk.h"
-
 #include <cstddef>
 #include <memory>
 #include <vector>
 
+struct Chunk;
+
+namespace ECS_Private
+{
 // Hands out Chunks, one allocator per World. Memory comes in blocks of kChunksPerBlock chunks
 // (1 MiB); freed chunks go to an intrusive free list and are reused most-recent-first, so after
 // warm-up Allocate/Free never touch the heap. Not thread-safe.
@@ -14,7 +16,7 @@ class ChunkAllocator
 public:
 	static constexpr std::size_t kChunksPerBlock = 64;
 
-	ChunkAllocator() = default;
+	ChunkAllocator() noexcept;
 	~ChunkAllocator() noexcept;
 	ChunkAllocator(const ChunkAllocator&)            = delete;
 	ChunkAllocator& operator=(const ChunkAllocator&) = delete;
@@ -42,3 +44,4 @@ private:
 	Chunk*                                freeList       = nullptr; // next pointer stored in the chunk bytes
 	std::size_t                           allocatedCount = 0;
 };
+} // namespace ECS_Private

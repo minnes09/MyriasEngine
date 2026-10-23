@@ -1,13 +1,18 @@
 #pragma once
 
-#include "ECS/Archetype.h"
+#include "ECS/ArchetypeRow.h"
 #include "ECS/EntityId.h"
+#include "ECS/WorldId.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
+
+namespace ECS_Private
+{
+class Archetype;
 
 // Where an entity's components are stored.
 struct EntityRecord
@@ -70,3 +75,4 @@ private:
 	std::size_t                        aliveCount = 0;
 	std::uint32_t                      nextIndex  = 0; // first never-used index
 };
+} // namespace ECS_Private

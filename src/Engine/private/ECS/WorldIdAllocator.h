@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ECS/EntityId.h"
+#include "ECS/WorldId.h"
 
 // Process-wide allocator of WorldIds (1..255). Internal to the ECS module.
 // Ids are handed out round-robin, so a just-released id is not reused immediately: a stale
